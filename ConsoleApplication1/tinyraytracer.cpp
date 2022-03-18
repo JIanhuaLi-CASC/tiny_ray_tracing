@@ -26,17 +26,35 @@ public:
 	vec3 normalized() const { return (*this)*(1.f / norm()); }
 };
 
+class color//默认float 
+{
+public:
+	color(unsigned char R, unsigned char y, unsigned char z) : x(x), y(y), z(z) {};
+	unsigned char x = 0, y = 0, z = 0;
+	unsigned char& operator[](const int i) { return i == 0 ? x : (1 == i ? y : z); }
+	const unsigned char& operator[](const int i) const { return i == 0 ? x : (1 == i ? y : z); }
+};
+
+
 
 
 void main()
 {
 	const int height = 200;
 	const int width = 200;
+	const int comp = 3;//每个像素的通道数
 	char* filename = "test.jpg";
 	unsigned char* framebuffer;
-	framebuffer=(unsigned char *)malloc(height*height);
+	framebuffer=(unsigned char *)malloc(height*height*comp);
+	int index = 0;
+	//std::vector<color> framebuffer(height*width);
 	for (int i = 0; i < height; i++)
 		for (int j = 0; j < width; j++)
-			framebuffer[i + j*width] = i % 255;
-	stbi_write_jpg("test.jpg", width, height,1, framebuffer, 100);
+		{			
+			framebuffer[index++] = i % 255;
+			framebuffer[index++] = j % 255;
+			framebuffer[index++] = 0;
+		}
+			
+	stbi_write_jpg("test.jpg", width, height, comp, framebuffer, 100);
 }
