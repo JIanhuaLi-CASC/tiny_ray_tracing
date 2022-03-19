@@ -24,15 +24,33 @@ public:
 	vec3  operator-()              const { return{ -x, -y, -z }; }
 	float norm() const { return std::sqrt(x*x + y*y + z*z); }
 	vec3 normalized() const { return (*this)*(1.f / norm()); }
+	vec3 &operator =(const vec3 &a) 
+	{
+		x = a.x; y = a.y; z = a.z;
+		return *this;
+	}
 };
 
 class color//默认float 
 {
 public:
-	color(unsigned char R, unsigned char G, unsigned char B) : R(R), G(G), B(B) {};
-	unsigned char R = 0, G = 0, B = 0;
-	unsigned char& operator[](const int i) { return i == 0 ? R : (1 == i ? G : B); }
-	const unsigned char& operator[](const int i) const { return i == 0 ? R : (1 == i ? G :B); }
+	color(float R=0, float G=0, float B=0) : R(R), G(G), B(B) {};
+	//color(unsigned char R = 0, unsigned char G = 0, unsigned char B = 0) : R(R), G(G), B(B) {};
+	float R = 0, G = 0, B = 0;
+	float& operator[](const int i) { return i == 0 ? R : (1 == i ? G : B); }
+	const float& operator[](const int i) const { return i == 0 ? R : (1 == i ? G :B); }
+	color &operator =(const color &a)
+	{
+		R = a.R; G = a.G; B = a.B;
+		return *this;
+	}
+};
+
+class material {
+public:
+	material(const color &color) : diffuse_color(color) {}
+	material() : diffuse_color(0.0,0.0,0.0) {}
+	color diffuse_color;
 };
 
 class sphere
@@ -40,7 +58,7 @@ class sphere
 public:
 	//sphere();
 	//~sphere();
-	sphere(const vec3 &c, const float &r) : center(c), radius(r) {}
+	sphere(const vec3 &c, const float &r,const material &m) : center(c), radius(r), mat(m){}
 	bool ray_intersect(const vec3 &orig, const vec3 &dir, float &t0) const 
 	//计算直线与球的交点。dir 必须为归一化矢量，一个从orig点发射的，方向为dir的直线，
 	//与球相交点距离直线的距离为t0，这个说最近的相交点
@@ -65,9 +83,9 @@ public:
 		}
 	
 	}
-private:
 	vec3 center;
 	float radius;
+	material mat;
 };
 
 //渲染函数
@@ -75,12 +93,28 @@ void render() {
 
 }
 
-vec3 cast_ray(const vec3 &orig, const vec3 &dir, const sphere &sphere) {
+color cast_ray(const vec3 &orig, const vec3 &dir, const std::vector<sphere> &spheres) {
 	float sphere_dist = std::numeric_limits<float>::max();
-	if (!sphere.ray_intersect(orig, dir, sphere_dist)) {
-		return vec3(0.2, 0.7, 0.8); // background color
+	float i_dist = std::numeric_limits<float>::max();
+	color top_c;
+	int flag=0;//相交的标志
+	for (size_t i = 0; i < spheres.size(); i++) 
+	{
+		if (spheres[i].ray_intersect(orig, dir, i_dist))//相交
+		{
+			flag = 1;
+			if (i_dist < sphere_dist)//距离最近的显示出来
+			{
+				sphere_dist = i_dist;
+				top_c = spheres[i].mat.diffuse_color; // background color
+			}
+			
+		}
 	}
-	return vec3(0.4, 0.4, 0.3);
+	if (flag == 0)//都不相交
+		return color(0.2, 0.7, 0.8);
+	else
+		return top_c;
 }
 
 
@@ -93,25 +127,33 @@ void main()
 	float fov = 30;//相机视角大小，相机为原点，屏幕图像为0 0 1平面，也就是说焦距为1
 	float d = 2 * tan(fov / 2 / 180.0 * PI) / (float)width;//每个像素的尺寸
 
+	material      ivory(color(0.4, 0.4, 0.3));
+	material red_rubber(color(0.3, 0.1, 0.1));
+	
+	std::vector<sphere> spheres;
+	
+	sphere sph1(vec3(-1,0,10),1, ivory);//第一个球
+	sphere sph2(vec3(0,2,15), 4, red_rubber);//第一个球
 
+	spheres.push_back(sph1);
+	spheres.push_back(sph2);
 
-	sphere sph1(vec3(0,0,10),1);//第一个球
-
-	char* filename = "step2.jpg";
+	char* filename = "step3.jpg";//more spheres
 	unsigned char* framebuffer;
 	framebuffer=(unsigned char *)malloc(height*height*comp);
 	int index = 0;
-	vec3 dir,orig,color;
+	vec3 dir, orig;
+	color color;
 	for (int i = 0; i < height; i++)
 		for (int j = 0; j < width; j++)
 		{			
 			dir = vec3((i - height / 2) * d, (j - width / 2) * d, 1);
 			dir = dir.normalized();
-			color = cast_ray(orig, dir, sph1);
-			framebuffer[index++] = (unsigned char)(color.x * 255);
-			framebuffer[index++] = (unsigned char)(color.y * 255);;
-			framebuffer[index++] = (unsigned char)(color.z * 255);;
+			color = cast_ray(orig, dir, spheres);
+			framebuffer[index++] = (unsigned char)(color.R * 255);
+			framebuffer[index++] = (unsigned char)(color.G * 255);
+			framebuffer[index++] = (unsigned char)(color.B * 255);
 		}
 			
-	stbi_write_jpg("step2.jpg", width, height, comp, framebuffer, 100);
+	stbi_write_jpg("step3.jpg", width, height, comp, framebuffer, 100);
 }
