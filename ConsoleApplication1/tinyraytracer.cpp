@@ -37,6 +37,7 @@ public:
 	color(float R=0, float G=0, float B=0) : R(R), G(G), B(B) {};
 	//color(unsigned char R = 0, unsigned char G = 0, unsigned char B = 0) : R(R), G(G), B(B) {};
 	float R = 0, G = 0, B = 0;
+	color  operator*(const float v) const { return{ R*v, G*v, B*v }; }
 	float& operator[](const int i) { return i == 0 ? R : (1 == i ? G : B); }
 	const float& operator[](const int i) const { return i == 0 ? R : (1 == i ? G :B); }
 	color &operator =(const color &a)
@@ -52,6 +53,13 @@ public:
 	material() : diffuse_color(0.0,0.0,0.0) {}
 	color diffuse_color;
 };
+
+struct Light {
+	Light(const vec3 &p, const float &i) : position(p), intensity(i) {}
+	vec3 position;
+	float intensity;
+};
+
 
 class sphere
 {
@@ -93,28 +101,26 @@ void render() {
 
 }
 
-color cast_ray(const vec3 &orig, const vec3 &dir, const std::vector<sphere> &spheres) {
-	float sphere_dist = std::numeric_limits<float>::max();
-	float i_dist = std::numeric_limits<float>::max();
+bool cast_ray(const vec3 &orig, const vec3 &dir, const std::vector<sphere> &spheres, vec3 &hit, vec3 &N, material &mat) {
+	float dist_sphere = std::numeric_limits<float>::max();
+	float dist_i = std::numeric_limits<float>::max();
 	color top_c;
-	int flag=0;//相交的标志
+//	vec3  hit;
 	for (size_t i = 0; i < spheres.size(); i++) 
 	{
-		if (spheres[i].ray_intersect(orig, dir, i_dist))//相交
+		if (spheres[i].ray_intersect(orig, dir, dist_i) && dist_i < dist_sphere)//相交
 		{
-			flag = 1;
-			if (i_dist < sphere_dist)//距离最近的显示出来
-			{
-				sphere_dist = i_dist;
-				top_c = spheres[i].mat.diffuse_color; // background color
-			}
-			
+			dist_sphere = dist_i;
+			hit = orig + dir*dist_i;
+			top_c = spheres[i].mat.diffuse_color; // background color
+			N = (hit - spheres[i].center).normalized();
+			mat = spheres[i].mat;
 		}
 	}
-	if (flag == 0)//都不相交
-		return color(0.2, 0.7, 0.8);
+	if (dist_sphere >  1000)//都不相交
+		return false;
 	else
-		return top_c;
+		return true;
 }
 
 
@@ -127,33 +133,50 @@ void main()
 	float fov = 30;//相机视角大小，相机为原点，屏幕图像为0 0 1平面，也就是说焦距为1
 	float d = 2 * tan(fov / 2 / 180.0 * PI) / (float)width;//每个像素的尺寸
 
-	material      ivory(color(0.4, 0.4, 0.3));
-	material red_rubber(color(0.3, 0.1, 0.1));
-	
+	material      ivory(color(0.3, 0.5, 0.9));
+	material red_rubber(color(0.6, 0.2, 0.3));
+	material red(color(0.7, 0.0, 0.0));
+
 	std::vector<sphere> spheres;
 	
 	sphere sph1(vec3(-1,0,10),1, ivory);//第一个球
-	sphere sph2(vec3(0,2,15), 4, red_rubber);//第一个球
+	sphere sph2(vec3(0,0,9), 1, red_rubber);//第一个球
+	sphere sph3(vec3(0, -1, 8), 0.5, red_rubber);//第一个球
 
 	spheres.push_back(sph1);
 	spheres.push_back(sph2);
+	spheres.push_back(sph3);
 
-	char* filename = "step3.jpg";//more spheres
+	Light light(vec3(0, 10, 0), 3);
+
+
+//	char* filename = "step3.jpg";//more spheres
+//	char* filename = "step4.jpg";//light,需要知道交点位置
 	unsigned char* framebuffer;
 	framebuffer=(unsigned char *)malloc(height*height*comp);
 	int index = 0;
-	vec3 dir, orig;
-	color color;
+	vec3 dir, orig,N,hit, light_dir;
+	color clr;
+	material mat;
 	for (int i = 0; i < height; i++)
 		for (int j = 0; j < width; j++)
 		{			
 			dir = vec3((i - height / 2) * d, (j - width / 2) * d, 1);
 			dir = dir.normalized();
-			color = cast_ray(orig, dir, spheres);
-			framebuffer[index++] = (unsigned char)(color.R * 255);
-			framebuffer[index++] = (unsigned char)(color.G * 255);
-			framebuffer[index++] = (unsigned char)(color.B * 255);
+			if (!cast_ray(orig, dir, spheres,  hit, N, mat)) clr= color(0.2, 0.7, 0.8);
+			else
+			{
+				light_dir = (light.position - hit).normalized();
+				clr =  mat.diffuse_color * std::max(0.f, (N*light_dir));
+			}
+
+			if (clr.R > 1)
+				clr.R = 1;
+
+			framebuffer[index++] = (unsigned char)(clr.R * 255);
+			framebuffer[index++] = (unsigned char)(clr.G * 255);
+			framebuffer[index++] = (unsigned char)(clr.B * 255);
 		}
 			
-	stbi_write_jpg("step3.jpg", width, height, comp, framebuffer, 100);
+	stbi_write_bmp("step4.bmp", width, height, comp, framebuffer);
 }
