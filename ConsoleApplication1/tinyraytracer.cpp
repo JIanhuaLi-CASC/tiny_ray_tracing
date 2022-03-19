@@ -45,13 +45,17 @@ public:
 		R = a.R; G = a.G; B = a.B;
 		return *this;
 	}
+	color  operator+(const color& v) const { return{ R + v.R, G + v.G, B + v.B }; }
 };
 
 class material {
 public:
-	material(const color &color) : diffuse_color(color) {}
-	material() : diffuse_color(0.0,0.0,0.0) {}
+	material(const color &color, const float &exp, const float &a) : 
+		    diffuse_color(color), specular_exponent(exp), albedo(a){}
+	material() : diffuse_color(0.f,0.f,0.f), specular_exponent(0.f), albedo(0.f){}
 	color diffuse_color;
+	float specular_exponent;//镜面反射的指数因子，越小角度越集中
+	float albedo;//反照的比例，如果为1则只有镜面反射，没有漫反射
 };
 
 struct Light {
@@ -59,6 +63,11 @@ struct Light {
 	vec3 position;
 	float intensity;
 };
+
+vec3 reflect(const vec3 &I, const vec3 &N) {
+	return I - N*2.f*(I*N);
+}
+
 
 
 class sphere
@@ -127,28 +136,34 @@ bool cast_ray(const vec3 &orig, const vec3 &dir, const std::vector<sphere> &sphe
 
 void main()
 {
-	const int height = 400;
-	const int width = 400;
+	const int height = 600;
+	const int width = 600;
 	const int comp = 3;//每个像素的通道数
-	float fov = 30;//相机视角大小，相机为原点，屏幕图像为0 0 1平面，也就是说焦距为1
+	float fov = 60;//相机视角大小，相机为原点，屏幕图像为0 0 1平面，也就是说焦距为1
 	float d = 2 * tan(fov / 2 / 180.0 * PI) / (float)width;//每个像素的尺寸
 
-	material      ivory(color(0.3, 0.5, 0.9));
-	material red_rubber(color(0.6, 0.2, 0.3));
-	material red(color(0.7, 0.0, 0.0));
+	material      ivory(color(0.3, 0.0, 0.0),20,0.5);
+	material red_rubber(color(0.0, 0.2, 0.0),5,1);
+	material red(color(0.0, 0.0, 0.2),20,0.1);
+	material glass(color(0.6, 0.7, 0.8), 200, 0.2);
 
 	std::vector<sphere> spheres;
 	
 	sphere sph1(vec3(-1,0,10),1, ivory);//第一个球
-	sphere sph2(vec3(0,0,9), 1, red_rubber);//第一个球
-	sphere sph3(vec3(0, -1, 8), 0.5, red_rubber);//第一个球
+	sphere sph2(vec3(0,1.2,9), 0.8, red_rubber);//第二个球
+	sphere sph3(vec3(0, -1, 8), 0.5, red);//第三个球
+	sphere sph4(vec3(-4, -4, 15), 2, glass);//第三个球
 
 	spheres.push_back(sph1);
 	spheres.push_back(sph2);
 	spheres.push_back(sph3);
+	spheres.push_back(sph4);
 
-	Light light(vec3(0, 10, 0), 3);
-
+	Light light1(vec3(0, 10, 0), 2);
+	Light light2(vec3(-50, 2, 2), 1);
+	std::vector<Light> lights;
+	lights.push_back(light1);
+	lights.push_back(light2);
 
 //	char* filename = "step3.jpg";//more spheres
 //	char* filename = "step4.jpg";//light,需要知道交点位置
@@ -158,25 +173,36 @@ void main()
 	vec3 dir, orig,N,hit, light_dir;
 	color clr;
 	material mat;
+	float diffuse_light_intensity = 0, specular_light_intensity = 0;
 	for (int i = 0; i < height; i++)
 		for (int j = 0; j < width; j++)
 		{			
 			dir = vec3((i - height / 2) * d, (j - width / 2) * d, 1);
-			dir = dir.normalized();
-			if (!cast_ray(orig, dir, spheres,  hit, N, mat)) clr= color(0.2, 0.7, 0.8);
+			dir = dir.normalized();//从相机过来的光线矢量
+			if (!cast_ray(orig, dir, spheres,  hit, N, mat)) clr= color(0.2, 0.2, 0.2);
 			else
 			{
-				light_dir = (light.position - hit).normalized();
-				clr =  mat.diffuse_color * std::max(0.f, (N*light_dir));
+				diffuse_light_intensity = 0;
+				specular_light_intensity = 0;
+				for (int k = 0; k < lights.size(); k++)
+				{
+					light_dir = (lights[k].position - hit).normalized();
+					diffuse_light_intensity += std::max(0.f, (light_dir*N)) * lights[k].intensity;
+					specular_light_intensity += powf(std::max(0.f, reflect(light_dir, N)*dir), mat.specular_exponent)*lights[k].intensity;
+				}
+				clr = mat.diffuse_color * diffuse_light_intensity * mat.albedo 
+					+ color(0.2, 0.2, 0.2) * specular_light_intensity * (1 - mat.albedo);
+				
 			}
 
-			if (clr.R > 1)
-				clr.R = 1;
+			if (clr.R > 1)	clr.R = 1;
+			if (clr.G > 1)	clr.G = 1;
+			if (clr.B > 1)	clr.B = 1;
 
 			framebuffer[index++] = (unsigned char)(clr.R * 255);
 			framebuffer[index++] = (unsigned char)(clr.G * 255);
 			framebuffer[index++] = (unsigned char)(clr.B * 255);
 		}
 			
-	stbi_write_bmp("step4.bmp", width, height, comp, framebuffer);
+	stbi_write_bmp("step5.bmp", width, height, comp, framebuffer);
 }
