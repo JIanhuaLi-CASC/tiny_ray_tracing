@@ -142,17 +142,17 @@ void main()
 	float fov = 60;//相机视角大小，相机为原点，屏幕图像为0 0 1平面，也就是说焦距为1
 	float d = 2 * tan(fov / 2 / 180.0 * PI) / (float)width;//每个像素的尺寸
 
-	material      ivory(color(0.3, 0.0, 0.0),20,0.5);
-	material red_rubber(color(0.0, 0.2, 0.0),5,1);
-	material red(color(0.0, 0.0, 0.2),20,0.1);
+	material      red(color(0.3, 0.0, 0.0),20,0.5);
+	material green(color(0.0, 0.2, 0.0),5,1);
+	material blue(color(0.2, 0.3, 0.6),20,0.1);
 	material glass(color(0.6, 0.7, 0.8), 200, 0.2);
 
 	std::vector<sphere> spheres;
 	
-	sphere sph1(vec3(-1,0,10),1, ivory);//第一个球
-	sphere sph2(vec3(0,1.2,9), 0.8, red_rubber);//第二个球
-	sphere sph3(vec3(0, -1, 8), 0.5, red);//第三个球
-	sphere sph4(vec3(-4, -4, 15), 2, glass);//第三个球
+	sphere sph1(vec3(-1,0,12),1.2, red);//第一个球
+	sphere sph2(vec3(0,-0.7,9), 0.8, green);//第二个球
+	sphere sph3(vec3(1.5, 0, 12.5), 1.2, blue);//第三个球
+	sphere sph4(vec3(4, 4, 15), 2, glass);//第三个球
 
 	spheres.push_back(sph1);
 	spheres.push_back(sph2);
@@ -160,24 +160,26 @@ void main()
 	spheres.push_back(sph4);
 
 	Light light1(vec3(0, 10, 0), 2);
-	Light light2(vec3(-50, 2, 2), 1);
+	Light light2(vec3(50, 2, 20), 2);
+	Light light3(vec3(4, -4, 0), 2);
 	std::vector<Light> lights;
 	lights.push_back(light1);
 	lights.push_back(light2);
-
+	lights.push_back(light3);
 //	char* filename = "step3.jpg";//more spheres
 //	char* filename = "step4.jpg";//light,需要知道交点位置
 	unsigned char* framebuffer;
 	framebuffer=(unsigned char *)malloc(height*height*comp);
 	int index = 0;
 	vec3 dir, orig,N,hit, light_dir;
+	float light_distance;
 	color clr;
 	material mat;
 	float diffuse_light_intensity = 0, specular_light_intensity = 0;
 	for (int i = 0; i < height; i++)
 		for (int j = 0; j < width; j++)
 		{			
-			dir = vec3((i - height / 2) * d, (j - width / 2) * d, 1);
+			dir = vec3((j - width / 2) * d, (-i + height / 2) * d, 1);//坐标系，向右为x，向上为y，正前为z
 			dir = dir.normalized();//从相机过来的光线矢量
 			if (!cast_ray(orig, dir, spheres,  hit, N, mat)) clr= color(0.2, 0.2, 0.2);
 			else
@@ -186,7 +188,15 @@ void main()
 				specular_light_intensity = 0;
 				for (int k = 0; k < lights.size(); k++)
 				{
-					light_dir = (lights[k].position - hit).normalized();
+					light_dir = (lights[k].position - hit).normalized();//从交点到光源，法线是从圆心到表面
+					light_distance = (lights[k].position - hit).norm();
+
+					vec3 shadow_orig = light_dir * N > 0 ? hit + N * 1e-3 : hit - N * 1e-3;
+					vec3 shadow_pt, shadow_N;
+					material tmp_mat;
+					//阴影主要处理别的球的遮挡，不是自己遮挡，因为自己在light_dir*N中有体现
+					if (cast_ray(shadow_orig, light_dir, spheres, shadow_pt, shadow_N, tmp_mat) && (shadow_pt - shadow_orig).norm() < light_distance)
+						continue;
 					diffuse_light_intensity += std::max(0.f, (light_dir*N)) * lights[k].intensity;
 					specular_light_intensity += powf(std::max(0.f, reflect(light_dir, N)*dir), mat.specular_exponent)*lights[k].intensity;
 				}
@@ -204,5 +214,5 @@ void main()
 			framebuffer[index++] = (unsigned char)(clr.B * 255);
 		}
 			
-	stbi_write_bmp("step5.bmp", width, height, comp, framebuffer);
+	stbi_write_bmp("step6.bmp", width, height, comp, framebuffer);
 }
