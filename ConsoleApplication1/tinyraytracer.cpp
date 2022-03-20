@@ -19,6 +19,7 @@ public:
 	const float& operator[](const int i) const { return i == 0 ? x : (1 == i ? y : z); }
 	vec3  operator*(const float v) const { return{ x*v, y*v, z*v }; }
 	float operator*(const vec3& v) const { return x*v.x + y*v.y + z*v.z; }
+	vec3  operator/(const float& v) const { return{ x/v, y/v, z/v }; }
 	vec3  operator+(const vec3& v) const { return{ x + v.x, y + v.y, z + v.z }; }
 	vec3  operator-(const vec3& v) const { return{ x - v.x, y - v.y, z - v.z }; }
 	vec3  operator-()              const { return{ -x, -y, -z }; }
@@ -33,12 +34,14 @@ public:
 
 class Material {
 public:
-	Material(const vec3 &color, const float &exp, const vec3 &a) :
-		color(color), specular_exponent(exp), albedo(a) {}
-	Material() : color(0.f, 0.f, 0.f), specular_exponent(0.f), albedo(0.f,0.f,0.f) {}
+	Material(const vec3 &color, const float &exp, const vec3 &a, const float &indx, const float &fct) :
+		color(color), specular_exponent(exp), albedo(a), refra_index(indx), refra_factor(fct){}
+	Material() : color(0.f, 0.f, 0.f), specular_exponent(0.f), albedo(0.f,0.f,0.f), refra_index(1.f), refra_factor(0.f) {}
 	vec3 color;
 	float specular_exponent;//镜面反射的指数因子，越小角度越集中
 	vec3 albedo;//反照的比例，如果为1则只有镜面反射，没有漫反射
+	float refra_index;
+	float refra_factor;
 };
 
 struct Light {
@@ -51,6 +54,14 @@ vec3 reflect(const vec3 &I, const vec3 &N) {
 	return I - N*2.f*(I*N);
 }
 
+vec3 refract(const vec3 &I, const vec3 &N, const float &ref_index) {
+	vec3 tmp;
+	if (I*N<0)//from outside to inside
+		tmp=(I - N*(I*N)) / ref_index + N * ( I * N );
+	else
+		tmp=(I - N*(I*N)) * ref_index + N * (I * N);
+	return tmp.normalized();
+}
 
 
 class sphere
@@ -126,8 +137,14 @@ vec3 cast_ray(const vec3 &orig, const vec3 &dir, const std::vector<sphere> &sphe
 		return color = vec3(0.2, 0.2, 0.2);//backgroud color
 
 	vec3 reflect_dir = reflect(dir, N).normalized();
-	vec3 reflect_orig = reflect_dir*N < 0 ? hit - N*1e-3 : hit + N*1e-3; // offset the original point to avoid occlusion by the object itself
+	//vec3 reflect_orig = reflect_dir*N < 0 ? hit - N*1e-3 : hit + N*1e-3; // offset the original point to avoid occlusion by the object itself
+	vec3 reflect_orig =  hit + reflect_dir*1e-3;
 	vec3 reflect_color = cast_ray(reflect_orig, reflect_dir, spheres, lights, depth + 1);//函数嵌套
+
+	vec3 refract_dir = refract(dir, N, mat.refra_index);
+	vec3 refract_orig = hit + refract_dir*1e-3;; // offset the original point to avoid occlusion by the object itself
+	vec3 refract_color = cast_ray(refract_orig, refract_dir, spheres, lights, depth + 1);//函数嵌套
+
 
 	float diffuse_light_intensity = 0, specular_light_intensity = 0;
 	for (int k = 0; k < lights.size(); k++)
@@ -145,7 +162,8 @@ vec3 cast_ray(const vec3 &orig, const vec3 &dir, const std::vector<sphere> &sphe
 		specular_light_intensity += powf(std::max(0.f, reflect(light_dir, N)*dir), mat.specular_exponent)*lights[k].intensity;
 	}
 	color = mat.color * diffuse_light_intensity * mat.albedo[0]
-		+ vec3(0.2, 0.2, 0.2) * specular_light_intensity * mat.albedo[1] + reflect_color*mat.albedo[2];
+		+ vec3(0.2, 0.2, 0.2) * specular_light_intensity * mat.albedo[1] 
+		+ reflect_color*mat.albedo[2] + refract_color * ( mat.refra_factor);
 
 	if (color.x > 1)	color.x = 1;
 	if (color.y > 1)	color.y = 1;
@@ -165,11 +183,11 @@ void main()
 	float fov = 60;//相机视角大小，相机为原点，屏幕图像为0 0 1平面，也就是说焦距为1
 	float d = 2 * tan(fov / 2 / 180.0 * PI) / (float)width;//每个像素的尺寸
 
-	Material   red(vec3(0.3, 0.0, 0.0), 20, vec3(0.5,0.2,0.3));
-	Material green(vec3(0.0, 0.2, 0.0), 5, vec3(0.5, 0.2, 0.3));
-	Material blue(vec3(0.2, 0.3, 0.6), 20, vec3(0.5, 0.2, 0.1));
-	Material glass(vec3(0.6, 0.7, 0.8), 200, vec3(0.5, 0.2, 0.1));
-	Material mirror(vec3(0.1, 0.2, 0.3), 1500, vec3(0.1, 1, 1));
+	Material   red(vec3(0.2, 0.6, 0.1), 20, vec3(0.5,0.2,0.1),1.5,0.0);
+	Material green(vec3(0.1, 0.1, 0.1), 500, vec3(0.1, 0.5, 0.5),1.5,1);//折射增强
+	Material blue(vec3(0.6, 0.3, 0.2), 20, vec3(0.5, 0.2, 0.1),1.5,0.0);
+//	Material glass(vec3(0.6, 0.7, 0.8), 200, vec3(0.1, 0.1, 0.1),1.5,0.1);
+	Material mirror(vec3(0.1, 0.2, 0.3), 1500, vec3(0.1, 1, 1),1.5,0.3);//反射增强
 
 	std::vector<sphere> spheres;
 
@@ -213,5 +231,5 @@ void main()
 			framebuffer[index++] = (unsigned char)(clr.z * 255);
 		}
 
-	stbi_write_bmp("step7-reflection.bmp", width, height, comp, framebuffer);
+	stbi_write_bmp("step8-refraction.bmp", width, height, comp, framebuffer);
 }
